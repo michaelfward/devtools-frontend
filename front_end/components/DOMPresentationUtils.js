@@ -333,7 +333,7 @@ Components.DOMPresentationUtils._cssPathStep = function(node, optimized, isTarge
   var id = node.getAttribute('id');
   if (optimized) {
     if (id)
-      return new Components.DOMNodePathStep(idSelector(id), true);
+      return new Components.DOMNodePathStep(idSelector(id, node.nodeName().toLowerCase()), true);
     var nodeNameLower = node.nodeName().toLowerCase();
     if (nodeNameLower === 'body' || nodeNameLower === 'head' || nodeNameLower === 'html')
       return new Components.DOMNodePathStep(node.nodeNameInCorrectCase(), true);
@@ -341,7 +341,7 @@ Components.DOMPresentationUtils._cssPathStep = function(node, optimized, isTarge
   var nodeName = node.nodeNameInCorrectCase();
 
   if (id)
-    return new Components.DOMNodePathStep(nodeName + idSelector(id), true);
+    return new Components.DOMNodePathStep(nodeName + idSelector(id, nodeName), true);
   var parent = node.parentNode;
   if (!parent || parent.nodeType() === Node.DOCUMENT_NODE)
     return new Components.DOMNodePathStep(nodeName, true);
@@ -363,10 +363,16 @@ Components.DOMPresentationUtils._cssPathStep = function(node, optimized, isTarge
 
   /**
    * @param {string} id
+   * @param {string} nodeName
    * @return {string}
    */
-  function idSelector(id) {
-    return '#' + escapeIdentifierIfNeeded(id);
+  function idSelector(id, nodeName) {
+    let escapedIdentifier = escapeIdentifierIfNeeded(id);
+    if (escapedIdentifier.includes('\\')){
+      var selector = canWriteAsElementAttribute(escapedIdentifier);
+      return selector ? nodeName+'[id="'+selector+'"]' : '#'+escapedIdentifier;
+    }
+    return '#' + escapedIdentifier;
   }
 
   /**
@@ -381,6 +387,50 @@ Components.DOMPresentationUtils._cssPathStep = function(node, optimized, isTarge
     return ident.replace(/./g, function(c, i) {
       return ((shouldEscapeFirst && i === 0) || !isCSSIdentChar(c)) ? escapeAsciiChar(c, i === lastIndex) : c;
     });
+  }
+
+  /**
+   * @param {string} selector
+   */
+  function canWriteAsElementAttribute (selector) {
+    const hexRegex = new RegExp(/(\\[0-9a-z]+ )/);
+    if (hexRegex.test(selector)){
+      return replChar(selector, hexRegex);
+    }
+    return false;
+  }
+
+  /**
+   * Credit: https://stackoverflow.com/a/3745677/6411139
+   *
+   * @param {string} hexx
+   * @return {string}
+   */
+  function hex2a(hexx) {
+    var hex = hexx.toString();//force conversion
+    var str = '';
+    for (var i = 0; i < hex.length; i += 2)
+        str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+    return str;
+  }
+
+  /**
+   *
+   * @param {string} str
+   * @param {RegExp} hexRegex
+   * @returns
+   */
+  function replChar(selectorString, hexRegex){
+    var result = hexRegex.exec(selectorString)
+    if (!result)
+      return selectorString;
+    for (var i = 0; i < result.length; i++){
+      var cur = result[i];
+      selectorString = selectorString.replace(cur, hex2a(cur.slice(1, 3)))
+    }
+    if (selectorString.includes('\\'))
+      selectorString = replChar(selectorString, hexRegex)
+    return selectorString;
   }
 
   /**
